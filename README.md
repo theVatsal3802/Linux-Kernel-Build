@@ -19,7 +19,7 @@ tar -xvf linux-5.10.223.tar.xz
 - Update Ubuntu and install required dependencies
 ```
 sudo apt update && sudo apt upgrade -y
-sudo apt install build-essential libncurses-dev bison flex libssl-dev
+sudo apt install build-essential libncurses-dev bison flex libssl-dev dwarves
 ```
 This will update the programs to their latest versions and then install the mentioned dependencies
 - Navigate into the linux folder just unzipped and open the folder in terminal.
