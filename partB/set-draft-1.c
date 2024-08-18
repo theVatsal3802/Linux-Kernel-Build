@@ -10,17 +10,12 @@
 #include <linux/seq_file.h>
 #include <linux/slab.h> // for kmalloc and kfree
 #include <linux/sched.h> // for current macro
+#include "set_ds.h"
 
 MODULE_LICENSE("GPL");
 
 #define MAX_SET_SIZE 100
 #define BUFFER_LEN 1024
-
-struct set_node{
-    int val;
-    struct set_node *left;
-    struct set_node *right;
-};
 
 struct set_pid_map{
     int set_size;
@@ -72,7 +67,7 @@ static int set_search_node(struct set_node *root , int val){
 static int set_node_height(struct set_node *root){
     if(!root)
         return 0;
-    return set_val_max(1+set_node_height(root->left), 1+set_node_height(root->right));
+    return set_val_max(1+set_node_height(root->left), 1+set_node_height(root));
 }
 
 /*
@@ -149,7 +144,6 @@ static void set_get_elem(struct set_node *root, char *buf, int *len){
         set_get_elem(root->left, buf, len);
         temp_len = *len;
         *len = temp_len + snprintf(buf + temp_len, 12, "%d ", root->val);
-        printk(KERN_ALERT "buf: %s\n", buf);
         set_get_elem(root->right, buf, len);
     }
 }
@@ -161,11 +155,13 @@ static void set_get_elem(struct set_node *root, char *buf, int *len){
     Cleanup for a particular PID.
 */
 static void set_reset_pid(struct set_pid_map *temp) {
-    printk(KERN_ALERT "PID: %d is releasing the file. Set has been reset\n", temp->set_curr_pid);
     temp->set_size = 0;
     temp->set_curr_size = 0;
-    temp->set_container = NULL;
-    temp->set_curr_pid = -1;
+    if (temp->set_container) {
+        kfree(temp->set_container);
+        temp->set_container = NULL;
+    }
+    printk(KERN_ALERT "PID: %d, reopened the proc file. Set has been reset", temp->set_curr_pid);
 }
 
 /* 
@@ -191,12 +187,8 @@ static struct set_pid_map* set_get_pid_exists(void){
 static struct set_pid_map* set_alloc_proc_map_entry(void){
     int i;
     for(i=0;i<MAX_SET_SIZE;i++){
-        if(set_proc_map[i] == NULL || set_proc_map[i]->set_curr_pid == -1){
+        if(set_proc_map[i] == NULL){
             set_proc_map[i] = (struct set_pid_map *)kmalloc(sizeof(struct set_pid_map), GFP_KERNEL);
-            set_proc_map[i]->set_size = 0;
-            set_proc_map[i]->set_curr_size = 0;
-            set_proc_map[i]->set_container = NULL;
-            set_proc_map[i]->set_curr_pid = current->pid;
             return set_proc_map[i];
         }
     }
@@ -208,8 +200,11 @@ static struct set_pid_map* set_alloc_proc_map_entry(void){
     Return value: 1 = set_elem exists
                   0 = does not exist
 */
-static int set_elem_exists(struct set_node *root, int set_elem){
-    return set_search_node(root, set_elem);
+static int set_elem_exists(struct set_pid_map *temp, int set_elem){
+    if(set_search_node(temp->set_container, set_elem)){
+        return 1;
+    }
+    return 0;
 }
 
 /* 
@@ -221,37 +216,6 @@ static void set_insert_elem(struct set_pid_map *temp, int set_elem){
 
 // Core LKM Functions end
 
-// Function to log when a file is opened
-static int set_file_open(struct inode *inode, struct file *file) {
-    struct set_pid_map *temp;
-    // Acquiring the lock
-    while(!mutex_trylock(&set_mutex));
-
-    temp = set_alloc_proc_map_entry();
-    // now check if the array is full
-
-    mutex_unlock(&set_mutex);
-    if(temp == NULL){
-        printk(KERN_ALERT "MAX Limit reached\n");
-        return -ENOMEM;
-    }
-    printk(KERN_INFO "PID %d opened the file\n", current->pid);
-    return 0;
-}
-
-// Function to log when a file is released (closed)
-static int set_file_release(struct inode *inode, struct file *file) {
-    struct set_pid_map *temp;
-    while(!mutex_trylock(&set_mutex));
-    
-    temp = set_get_pid_exists();
-    set_reset_pid(temp);
-    
-    mutex_unlock(&set_mutex);
-    printk(KERN_INFO "PID %d closed the file\n", current->pid);
-    return 0;
-}
-
 static ssize_t set_file_read(struct file *file,
                              char __user *user_buff,
                              size_t count,
@@ -259,18 +223,26 @@ static ssize_t set_file_read(struct file *file,
     char *buf = (char *)kmalloc(sizeof(char) * BUFFER_LEN, GFP_KERNEL);
     int len = 0;
     struct set_pid_map *temp;
+    // Acquiring the lock
+    while(!mutex_trylock(&set_mutex));
     
     // check if the current pid exists
     if((temp = set_get_pid_exists()) == NULL){
-            printk(KERN_ALERT "Something is wrong. PID %d not found\n", current->pid);
-            return -EACCES;
+        temp = set_alloc_proc_map_entry();
+        
+        // now check if the array is full
+        if(temp == NULL){
+            printk(KERN_ALERT "MAX Limit reached");
+            return -ENOMEM;
+        }
     }
+
+    mutex_unlock(&set_mutex);
+
     // Return 0 (EOF) if the position is greater than 0
     if (*pos > 0)
         return 0;
-    return 0;
-    // Acquiring the lock
-    while(!mutex_trylock(&set_mutex));
+
     // Add all elements from the set to the buffer, separated by spaces
     set_get_elem(temp->set_container, buf, &len);
     len += snprintf(buf + len, 2, "\n");
@@ -282,8 +254,7 @@ static ssize_t set_file_read(struct file *file,
     // Copy data to user space
     if (copy_to_user(user_buff, buf, len))
         return -EFAULT;
-        
-    mutex_unlock(&set_mutex);
+
     // Update the position
     *pos = len;
 
@@ -297,17 +268,28 @@ static ssize_t set_file_write(struct file *file, const char __user *user_buff, s
     
     // cannot open the file more than once
     if(atomic64_read(&(file->f_count)) > 1){
-        printk(KERN_ALERT "SOMETHING IS TERRIBLY WRONG!!!\n");
         return -EACCES;
     }
+    // Acquiring the lock
+    while(!mutex_trylock(&set_mutex));
     
-    // Get the set for current PID 
+    // check if the current pid exists
     temp = set_get_pid_exists();
     if(temp == NULL){
-        printk(KERN_ALERT "Something is wrong. Set for PID %d not found\n", current->pid);
-        return -EACCES;
+        // this pid does not exist. Now allocate an entry in the array
+        temp = set_alloc_proc_map_entry();
+        // now check if the array is full
+        if(temp == NULL){
+            printk(KERN_ALERT "MAX Limit reached");
+            return -ENOMEM;
+        }
+    } else {
+        set_reset_pid(temp);
     }
-    printk(KERN_ALERT "Set size is: %d and pid is: %d\n", temp->set_curr_size, temp->set_curr_pid);
+
+    mutex_unlock(&set_mutex);
+
+    // Now we have the struct for the process: either new or existing
 
     // Ensure the input size is within buffer limits
     if (count >= BUFFER_LEN)
@@ -317,78 +299,68 @@ static ssize_t set_file_write(struct file *file, const char __user *user_buff, s
         return -EFAULT;
     
     buf[count] = '\0'; // Null-terminate the string
-    printk(KERN_ALERT "Got this from pid %d, set-pid: %d: %s",current->pid, temp->set_curr_pid, buf);
+    printk(KERN_ALERT "Got this from user: %s", buf);
     num_chars = sscanf(buf, "%d", &i);
     // sscanf fails if buff is not a valid number
     if (num_chars != 1)
         return -EINVAL;
+
     // Ensuring set size is between 1 and MAX_SET_SIZE (both inclusive)
     if (temp->set_size == 0 && (i < 1 || i > MAX_SET_SIZE)) {
-        printk(KERN_ALERT "The set size passed (%d) is out of range\n", i);
+        printk(KERN_ALERT "The set size passed (%d) is out of range", i);
         return -EINVAL;
     }
 
     if(temp->set_size == 0){
-        // Initialize set size and current size. Root should still be NULL hence not
-        // initializing temp->set_container
+        // Allocate memory for the set based on the size
+        temp->set_container = kmalloc(i * sizeof(int), GFP_KERNEL);
+        if (!temp->set_container)
+            return -ENOMEM;
+        // Initialize the set
+        temp->set_curr_pid = current->pid;
         temp->set_size = i;
         temp->set_curr_size = 0;
         printk(KERN_ALERT "Set size set: %d", temp->set_size);
         return count; // return now. No need for remaining steps
     }
+
     // Check if set is full
     if (temp->set_curr_size >= temp->set_size) {
-        printk(KERN_ALERT "Set is full. Cannot add more elements.\n");
+        printk(KERN_ALERT "Set is full. Cannot add more elements.");
         return -EACCES;
     }
     // check if element is in set
-    // if yes, return 0, ie, we are not inserting it.
+    // if yes, return 0, ie, we are not writing anything.
     // else insert the element in the set
-    if(set_elem_exists(temp->set_container, i)){
-        // printk(KERN_ALERT "WHY THE FUCK ARE WE COMING HERE?\n");
+    if(set_elem_exists(temp, i)){
         return 0;
     } else {
-        if(temp->set_container)
-            printk(KERN_ALERT "Root is: %d for pid: %d\n", temp->set_container->val, temp->set_curr_pid);
-        // if(temp->set_container){
-        //     printk(KERN_ALERT "This is the root value %d\n", temp->set_container->val);
-        //     if(!(temp->set_container->left) && !(temp->set_container->right))
-        //         printk(KERN_ALERT "left and right are null and we are inserting %d\n", i);
-        //     // return 0;
-        // }
-        // inc the size
-        temp->set_curr_size += 1;
         set_insert_elem(temp, i);
     }
 
-    printk(KERN_ALERT "This is the value of count we are returning: %ld\n", count);
+    printk(KERN_ALERT "This is the value of count we are returning: %ld", count);
     return count;
 }
 
 static const struct proc_ops myops = {
     .proc_read = set_file_read,
-    .proc_write = set_file_write,
-    .proc_release = set_file_release,
-    .proc_open = set_file_open
+    .proc_write = set_file_write
 };
 
 static int __init set_init(void) {
-    int i;
     set_file = proc_create("partb_24CS60R43_24CS60R26", 0666, NULL, &myops);
     if (!set_file) {
-        printk(KERN_ALERT "File create unsuccessful\n");
+        printk(KERN_ALERT "File create unsuccessful");
         return -ENOMEM;
     }
     // Memory allocation for array of set_pid_map array
     set_proc_map = (struct set_pid_map **)kmalloc(sizeof(struct set_pid_map*) * MAX_SET_SIZE, GFP_KERNEL);
-    for(i=0;i<MAX_SET_SIZE;i++)
-        set_proc_map[i]= NULL;
     if(!set_proc_map){
-        printk(KERN_ALERT "Memory allocation failed\n");
+        printk(KERN_ALERT "Memory allocation failed");
         return -ENOMEM;
     }
     mutex_init(&set_mutex);
-    printk(KERN_ALERT "Set module loaded\n");
+    printk(KERN_ALERT "Set module loaded");
     return 0;
 }
 
@@ -400,7 +372,7 @@ static void __exit set_exit(void) {
     }
     if (set_file)
         proc_remove(set_file);
-    printk(KERN_WARNING "Removing set module. Bye...\n");
+    printk(KERN_WARNING "Removing set module. Bye...");
 }
 
 module_init(set_init);

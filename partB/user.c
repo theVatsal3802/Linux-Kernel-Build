@@ -43,6 +43,10 @@ int main(void)
         }
         // printf("len: %d, temp_len: %d\n", len, temp_len);
     }
+    // close(fd);
+    // fd = open("/proc/partb_24CS60R43_24CS60R26", O_RDWR);
+    // read(fd, buff, 256);
+    puts(buff);
     close(fd);
     return 0;
 }	
