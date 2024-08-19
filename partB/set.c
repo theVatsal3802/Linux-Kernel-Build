@@ -226,7 +226,13 @@ static int set_file_open(struct inode *inode, struct file *file) {
     struct set_pid_map *temp;
     // Acquiring the lock
     while(!mutex_trylock(&set_mutex));
-
+    // cannot open the file more than once
+    temp = set_get_pid_exists();
+    if(temp){
+        printk(KERN_ALERT "Cannot open a file more than once. PID %d alread exists\n", current->pid);
+        mutex_unlock(&set_mutex);
+        return -EACCES;
+    }
     temp = set_alloc_proc_map_entry();
     // now check if the array is full
 
@@ -258,19 +264,22 @@ static ssize_t set_file_read(struct file *file,
                              loff_t *pos) {
     char *buf = (char *)kmalloc(sizeof(char) * BUFFER_LEN, GFP_KERNEL);
     int len = 0;
-    struct set_pid_map *temp;
     
+    struct set_pid_map *temp;
     // check if the current pid exists
-    if((temp = set_get_pid_exists()) == NULL){
+    while(!mutex_trylock(&set_mutex));
+    printk(KERN_ALERT "Reading!\n");
+    temp = set_get_pid_exists();
+    if(!temp){
+            mutex_unlock(&set_mutex);
             printk(KERN_ALERT "Something is wrong. PID %d not found\n", current->pid);
             return -EACCES;
     }
     // Return 0 (EOF) if the position is greater than 0
     if (*pos > 0)
         return 0;
-    return 0;
     // Acquiring the lock
-    while(!mutex_trylock(&set_mutex));
+    
     // Add all elements from the set to the buffer, separated by spaces
     set_get_elem(temp->set_container, buf, &len);
     len += snprintf(buf + len, 2, "\n");
@@ -285,7 +294,6 @@ static ssize_t set_file_read(struct file *file,
         
     mutex_unlock(&set_mutex);
     // Update the position
-    *pos = len;
 
     return len;
 }
@@ -294,12 +302,6 @@ static ssize_t set_file_write(struct file *file, const char __user *user_buff, s
     char *buf = kmalloc(sizeof(char) * BUFFER_LEN, GFP_KERNEL);
     int num_chars = -1, i;
     struct set_pid_map *temp;
-    
-    // cannot open the file more than once
-    if(atomic64_read(&(file->f_count)) > 1){
-        printk(KERN_ALERT "SOMETHING IS TERRIBLY WRONG!!!\n");
-        return -EACCES;
-    }
     
     // Get the set for current PID 
     temp = set_get_pid_exists();

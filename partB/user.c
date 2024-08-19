@@ -41,12 +41,24 @@ int main(void)
             printf("Seems like %s already exists in the set or is invalid\n", buff);
             i--;
         }
+        // lseek(fd, 0 , SEEK_SET);
+        if(i>1 && i%2 == 0){
+            // comment out line 47 to 52 to make the program work
+            char read_buff[256];
+            int fd = open("/proc/partb_24CS60R43_24CS60R26", O_RDWR);
+            if(fd == -1){
+                printf("Somethin wrong with opening file!\n");
+                return 0;
+            }
+            read(fd, read_buff, 256);
+            puts(read_buff);
+        }
         // printf("len: %d, temp_len: %d\n", len, temp_len);
     }
     // close(fd);
     // fd = open("/proc/partb_24CS60R43_24CS60R26", O_RDWR);
     // read(fd, buff, 256);
-    puts(buff);
+    // puts(buff);
     close(fd);
     return 0;
 }	
