@@ -282,7 +282,8 @@ static ssize_t set_file_read(struct file *file,
     
     // Add all elements from the set to the buffer, separated by spaces
     set_get_elem(temp->set_container, buf, &len);
-    len += snprintf(buf + len, 2, "\n");
+    // we are using puts in userspace program hence we do not need this
+    // len += snprintf(buf + len, 2, "\n");
 
     // Ensure that len is within count limits
     if (len > count)
@@ -300,7 +301,7 @@ static ssize_t set_file_read(struct file *file,
 
 static ssize_t set_file_write(struct file *file, const char __user *user_buff, size_t count, loff_t *pos) {
     char *buf = kmalloc(sizeof(char) * BUFFER_LEN, GFP_KERNEL);
-    int num_chars = -1, i;
+    int num_chars = -1, i,j;
     struct set_pid_map *temp;
     
     // Get the set for current PID 
@@ -320,6 +321,14 @@ static ssize_t set_file_write(struct file *file, const char __user *user_buff, s
     
     buf[count] = '\0'; // Null-terminate the string
     printk(KERN_ALERT "Got this from pid %d, set-pid: %d: %s",current->pid, temp->set_curr_pid, buf);
+    for(j=0;j<count;j++){
+        if((buf[j]>='0' && buf[j]<='9') || buf[j] == '\0')
+            continue;
+        else{
+            printk(KERN_ALERT "Coming here for %c\n", buf[j]);
+            return -EINVAL;
+        }
+    }
     num_chars = sscanf(buf, "%d", &i);
     // sscanf fails if buff is not a valid number
     if (num_chars != 1)

@@ -13,16 +13,24 @@ int main(void)
         printf("Somethin wrong with opening file!\n");
         return 0;
     }
-    int n, i, j;
-    printf("Enter the set size: ");
-    
-    fgets(ip, 256, stdin);
-    ip[strlen(ip)] = '\0';
-    int len = snprintf(buff, strlen(ip)+2, "%s", ip), temp_len;
-    // write to the set first. let it decide if it is valid
-    write(fd, buff, len);
-    // convert n to integer now
-    sscanf(buff, "%d", &n);
+    int n, i, j, x, len, temp_len;
+    while(1){
+        printf("Enter the set size: ");
+        
+        fgets(ip, 256, stdin);
+        // 1234
+        ip[strlen(ip)-1] = '\0';
+        len = snprintf(buff, strlen(ip)+1, "%s", ip);
+        // write to the set first. let it decide if it is valid
+        x = write(fd, buff, len);
+        if(x<len){
+            printf("Invalid length entered\n");
+            continue;
+        }
+        // convert n to integer now
+        sscanf(buff, "%d", &n);
+        break;
+    }
     // do not close as it will write it again
     for(int i=0;i<n;i++){
         printf("Enter set element: ");
@@ -35,7 +43,7 @@ int main(void)
             printf("Seems like %s already exists in the set or is invalid\n", buff);
             i--;
         }
-        if(i>1 && i%2 == 0){
+        if(i>1 && i%2 == 0 && i!=n-1){
             // uncomment out line 47 to 52 to get read access error
             char read_buff[256];
             // int fd = open("/proc/partb_24CS60R43_24CS60R26", O_RDWR);
@@ -47,6 +55,10 @@ int main(void)
             puts(read_buff);
         }
     }
+    char read_buff[256];
+    read(fd, read_buff, 256);
+    printf("Final values in set: ");
+    puts(read_buff);
     close(fd);
     return 0;
 }	
