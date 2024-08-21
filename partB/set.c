@@ -347,17 +347,10 @@ static ssize_t set_file_write(struct file *file, const char __user *user_buff, s
     // if yes, return 0, ie, we are not inserting it.
     // else insert the element in the set
     if(set_elem_exists(temp->set_container, i)){
-        // printk(KERN_ALERT "WHY THE FUCK ARE WE COMING HERE?\n");
         return 0;
     } else {
         if(temp->set_container)
             printk(KERN_ALERT "Root is: %d for pid: %d\n", temp->set_container->val, temp->set_curr_pid);
-        // if(temp->set_container){
-        //     printk(KERN_ALERT "This is the root value %d\n", temp->set_container->val);
-        //     if(!(temp->set_container->left) && !(temp->set_container->right))
-        //         printk(KERN_ALERT "left and right are null and we are inserting %d\n", i);
-        //     // return 0;
-        // }
         // inc the size
         temp->set_curr_size += 1;
         set_insert_elem(temp, i);
