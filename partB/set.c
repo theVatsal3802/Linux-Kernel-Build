@@ -149,7 +149,6 @@ static void set_get_elem(struct set_node *root, char *buf, int *len){
         set_get_elem(root->left, buf, len);
         temp_len = *len;
         *len = temp_len + snprintf(buf + temp_len, 12, "%d ", root->val);
-        printk(KERN_ALERT "buf: %s\n", buf);
         set_get_elem(root->right, buf, len);
     }
 }
@@ -282,20 +281,21 @@ static ssize_t set_file_read(struct file *file,
     
     // Add all elements from the set to the buffer, separated by spaces
     set_get_elem(temp->set_container, buf, &len);
+    printk(KERN_ALERT "buf: %s\n", buf);
     // we are using puts in userspace program hence we do not need this
     // len += snprintf(buf + len, 2, "\n");
 
     // Ensure that len is within count limits
-    if (len > count)
-        len = count;
+    // if (len > count)
+    //     len = count;
 
     // Copy data to user space
     if (copy_to_user(user_buff, buf, len))
         return -EFAULT;
         
+    if(temp->set_curr_size == temp->set_size)
+        printk(KERN_ALERT "Bytes read (number of chars): %d\n", len);
     mutex_unlock(&set_mutex);
-    // Update the position
-
     return len;
 }
 
@@ -310,7 +310,6 @@ static ssize_t set_file_write(struct file *file, const char __user *user_buff, s
         printk(KERN_ALERT "Something is wrong. Set for PID %d not found\n", current->pid);
         return -EACCES;
     }
-    printk(KERN_ALERT "Set size is: %d and pid is: %d\n", temp->set_curr_size, temp->set_curr_pid);
 
     // Ensure the input size is within buffer limits
     if (count >= BUFFER_LEN)
@@ -318,16 +317,12 @@ static ssize_t set_file_write(struct file *file, const char __user *user_buff, s
 
     if (copy_from_user(buf, user_buff, count))
         return -EFAULT;
-    
-    buf[count] = '\0'; // Null-terminate the string
-    printk(KERN_ALERT "Got this from pid %d, set-pid: %d: %s",current->pid, temp->set_curr_pid, buf);
-    for(j=0;j<count;j++){
-        if((buf[j]>='0' && buf[j]<='9') || buf[j] == '\0')
-            continue;
-        else{
-            printk(KERN_ALERT "Coming here for %c\n", buf[j]);
+    // printk(KERN_ALERT "The count passed is: %lu\n", count);
+    // buf[count] = '\0'; // Null-terminate the string
+    // printk(KERN_ALERT "Got this from pid %d, curr_set_pid: %d: %s..",current->pid, temp->set_curr_pid, buf);
+    for(j=0;j<count-1;j++){
+        if(!(buf[j]>='0' && buf[j]<='9'))
             return -EINVAL;
-        }
     }
     num_chars = sscanf(buf, "%d", &i);
     // sscanf fails if buff is not a valid number
@@ -338,34 +333,35 @@ static ssize_t set_file_write(struct file *file, const char __user *user_buff, s
         printk(KERN_ALERT "The set size passed (%d) is out of range\n", i);
         return -EINVAL;
     }
-
+    while(!mutex_trylock(&set_mutex));
     if(temp->set_size == 0){
         // Initialize set size and current size. Root should still be NULL hence not
         // initializing temp->set_container
         temp->set_size = i;
         temp->set_curr_size = 0;
-        printk(KERN_ALERT "Set size set: %d", temp->set_size);
+        printk(KERN_ALERT "Set size is: %d and pid is: %d\n", temp->set_curr_size, temp->set_curr_pid);
+        mutex_unlock(&set_mutex);
         return count; // return now. No need for remaining steps
     }
     // Check if set is full
     if (temp->set_curr_size >= temp->set_size) {
         printk(KERN_ALERT "Set is full. Cannot add more elements.\n");
+        mutex_unlock(&set_mutex);
         return -EACCES;
     }
     // check if element is in set
     // if yes, return 0, ie, we are not inserting it.
     // else insert the element in the set
     if(set_elem_exists(temp->set_container, i)){
+        mutex_unlock(&set_mutex);
         return 0;
     } else {
-        if(temp->set_container)
-            printk(KERN_ALERT "Root is: %d for pid: %d\n", temp->set_container->val, temp->set_curr_pid);
         // inc the size
         temp->set_curr_size += 1;
         set_insert_elem(temp, i);
     }
-
-    printk(KERN_ALERT "This is the value of count we are returning: %ld\n", count);
+    printk(KERN_ALERT "Bytes written (number of chars): %ld\n", count);
+    mutex_unlock(&set_mutex);
     return count;
 }
 
