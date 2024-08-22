@@ -10,20 +10,23 @@ In this part of the assignment, we developed a Loadable Kernel Module (LKM) and 
 $ ./set.sh
 ```
 This script will perform the following tasks:
+- Remove files named '`set*.txt`. Please ensure your folder does not have any files matching this format.
 - Remove a module named `set` (if it already exists).
 - Compile the LKM using the `make` command
 - Compile the user space process program using the command `gcc user.c` and generate a `a.out` executable.
 - Insert the LKM using the `insmod` command.
 
 Now you have two options:
-- Option 1: Run `proc.sh`. This script will create 50 processes. For each process, it will generate a random number between 1 and 100 (both inclusive), let us call it `n`. Next for `i-th` process, it inserts `n` multiples of `i` in the set (for that process). We have not inserted duplicates using this script so that functionality (duplicate checking) will not be tested using this script. The output for `i-th` file will be written in `process_<i>_output.txt`, in the same directory.
-- Option 2: Run `a.out` manually. You can run it on as many terminals (<=100) as you want. 
+- Option 1: Run `proc.sh`. This script will create 50 processes. For each process, it will generate a random number between 1 and 100 (both inclusive), let us call it `n`. Next for `i-th` process, it inserts `n` multiples of `i` in the set (for that process). We have not inserted duplicates using this script so that functionality (duplicate checking) will not be tested using this script. The output for `i-th` file will be written in `set_<i>.txt`, in the same directory.
+- Option 2: Run `a.out` manually. You can run it on as many terminals (<=100) as you want.
+- **Note**: Some lines in the userspace process `(user.c)` are commented out so that the output files are clean. Please uncomment those as per your convenience. You can add intermediate write/read calls to check the functionality of allowing only a single instance of file being opened.
 
 ## Features
-- The Set functionality of the LKM is implemented using **AVL Tree** which makes it optimal.
+- The Set functionality of the LKM is implemented using **AVL Tree** which ensures inserts and delete are `O(log n)`.
 - The LKM handles concurrency.
 - No user space program will be able to open the file more than once simultaneously.
 - Maximum 100 processes can have active sets. It can be changed by changing the `MAX_SET_SIZE` parameter at the start of `set.c`.
+- The userspace process will read from the set for every `i-th` iteration when `i` is even and greater than zero. If empty set is read, an empty string is returned. 
 
 ## FAQs:
 **Q**: I cannot run either of `set.sh` or `proc.sh`. What do I do?<br>
