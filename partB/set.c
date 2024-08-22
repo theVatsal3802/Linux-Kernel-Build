@@ -286,8 +286,8 @@ static ssize_t set_file_read(struct file *file,
     // len += snprintf(buf + len, 2, "\n");
 
     // Ensure that len is within count limits
-    // if (len > count)
-    //     len = count;
+    if (len > count)
+        len = count;
 
     // Copy data to user space
     if (copy_to_user(user_buff, buf, len))

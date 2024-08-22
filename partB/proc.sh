@@ -1,31 +1,31 @@
 #!/bin/bash
 
 # Function to generate and run processes
-run_process() {
+create_sets() {
     i=$1
     n=$2
-    output_file="process_${i}_output.txt"
+    output_file="set_${i}.txt"
     
-    # Start the output file with basic info
-    echo "Process $i: Random number n = $n" > "$output_file"
-    echo "Generated multiples of $i up to $n:" >> "$output_file"
+    echo "Set no. $i: Random number n = $n" >> "$output_file"
+    echo "We are generating $n multiples of $i:" >> "$output_file"
     
     # Prepare the input for a.out
     {
-        echo "$n"  # First, pass the value of n
+        echo "$n"  # First we give the value of n
         for (( j=1; j<=n; j++ ))
         do
             echo "$((i * j))"  # Each subsequent line is a multiple of i
         done
-    } | ./a.out >> "$output_file" &  # Pipe the input to a.out and append the output to the file
+    } | ./a.out >> "$output_file" & 
+    # '&' should send the process in background making this a parallel execution
 }
 
-# Create 10 processes
+# Create 50 processes
 for i in {1..50}
 do
-    # Generate a random number between 1 and 100
+    # Generate a random number between 1 and 100 (both inclusive)
     n=$((RANDOM % 100 + 1))
-    run_process $i $n
+    create_sets $i $n
 done
 
 # Wait for all processes to complete
